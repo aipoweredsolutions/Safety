@@ -38,8 +38,12 @@ class AuthService {
     console.log('🔐 Starting sign up process for:', email)
     
     try {
+      // Clear any existing cache
+      this.clearCache()
+
+      // Sign up with Supabase Auth
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
           data: {
@@ -47,17 +51,44 @@ class AuthService {
             age: userData.age,
             age_group: userData.ageGroup,
             avatar: ''
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/app`
         }
       })
 
       if (error) {
-        console.error('❌ Sign up error:', error.message)
-        return { user: null, error: error.message }
+        console.error('❌ Supabase sign up error:', error.message)
+        
+        // Provide user-friendly error messages
+        let userFriendlyError = error.message
+        if (error.message.includes('User already registered')) {
+          userFriendlyError = 'An account with this email already exists. Please try signing in instead.'
+        } else if (error.message.includes('Invalid email')) {
+          userFriendlyError = 'Please enter a valid email address.'
+        } else if (error.message.includes('Password should be at least')) {
+          userFriendlyError = 'Password must be at least 6 characters long.'
+        } else if (error.message.includes('Signup is disabled')) {
+          userFriendlyError = 'Account creation is currently disabled. Please contact support.'
+        }
+        
+        return { user: null, error: userFriendlyError }
       }
 
       if (data.user) {
-        console.log('✅ Auth user created, ID:', data.user.id)
+        console.log('✅ Supabase Auth user created, ID:', data.user.id)
+        console.log('📧 Email confirmation required:', !data.session)
+        
+        // If email confirmation is required
+        if (!data.session) {
+          console.log('📬 Email confirmation required - user will need to check their email')
+          return { 
+            user: null, 
+            error: 'Please check your email and click the confirmation link to complete your account setup.' 
+          }
+        }
+
+        // If user is immediately signed in (email confirmation disabled)
+        console.log('✅ User signed up and logged in immediately')
         
         // Create user profile in the users table
         const { error: profileError } = await supabase
@@ -72,10 +103,11 @@ class AuthService {
 
         if (profileError) {
           console.error('❌ Error creating user profile:', profileError)
-          return { user: null, error: 'Failed to create user profile' }
+          // Don't fail the signup if profile creation fails - we can retry later
+          console.log('⚠️ Profile creation failed, but user auth succeeded')
+        } else {
+          console.log('✅ User profile created successfully')
         }
-
-        console.log('✅ User profile created')
 
         // Create initial user progress record
         const { error: progressError } = await supabase
@@ -92,23 +124,22 @@ class AuthService {
 
         if (progressError) {
           console.error('❌ Error creating user progress:', progressError)
-          return { user: null, error: 'Failed to create user progress' }
+          // Don't fail the signup if progress creation fails
+          console.log('⚠️ Progress creation failed, but user auth succeeded')
+        } else {
+          console.log('✅ User progress created successfully')
         }
 
-        console.log('✅ User progress created')
-
-        // Clear cache and fetch the complete user profile
-        this.clearCache()
+        // Fetch the complete user profile
         const user = await this.getCurrentUser()
-        
         return { user, error: null }
       }
 
-      console.error('❌ No user returned from signup')
-      return { user: null, error: 'Failed to create user' }
+      console.error('❌ No user returned from Supabase signup')
+      return { user: null, error: 'Failed to create account. Please try again.' }
     } catch (error) {
       console.error('❌ Unexpected signup error:', error)
-      return { user: null, error: 'An unexpected error occurred' }
+      return { user: null, error: 'An unexpected error occurred. Please try again.' }
     }
   }
 
@@ -119,13 +150,14 @@ class AuthService {
       // Clear any existing cache first
       this.clearCache()
       
+      // Sign in with Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password
       })
 
       if (error) {
-        console.error('❌ Sign in error:', error.message)
+        console.error('❌ Supabase sign in error:', error.message)
         
         // Provide more user-friendly error messages
         let userFriendlyError = error.message
@@ -135,14 +167,20 @@ class AuthService {
           userFriendlyError = 'Please check your email and click the confirmation link before signing in.'
         } else if (error.message.includes('Too many requests')) {
           userFriendlyError = 'Too many sign-in attempts. Please wait a moment and try again.'
+        } else if (error.message.includes('User not found')) {
+          userFriendlyError = 'No account found with this email address. Please check your email or create a new account.'
+        } else if (error.message.includes('Invalid password')) {
+          userFriendlyError = 'Incorrect password. Please try again.'
         }
         
         return { user: null, error: userFriendlyError }
       }
 
       if (data.user && data.session) {
-        console.log('✅ Auth user signed in successfully, ID:', data.user.id)
+        console.log('✅ Supabase Auth user signed in successfully, ID:', data.user.id)
         console.log('✅ Session established:', !!data.session)
+        console.log('📧 User email:', data.user.email)
+        console.log('✅ Email confirmed:', data.user.email_confirmed_at ? 'Yes' : 'No')
         
         // Wait a moment for the session to be fully established
         await new Promise(resolve => setTimeout(resolve, 100))
@@ -159,7 +197,7 @@ class AuthService {
         return { user, error: null }
       }
 
-      console.error('❌ No user or session returned from signin')
+      console.error('❌ No user or session returned from Supabase signin')
       return { user: null, error: 'Sign in failed. Please try again.' }
     } catch (error) {
       console.error('❌ Unexpected signin error:', error)
@@ -177,11 +215,11 @@ class AuthService {
       const { error } = await supabase.auth.signOut()
       
       if (error) {
-        console.error('❌ Sign out error:', error.message)
+        console.error('❌ Supabase sign out error:', error.message)
         return { error: error.message }
       }
       
-      console.log('✅ Successfully signed out')
+      console.log('✅ Successfully signed out from Supabase')
       return { error: null }
     } catch (error) {
       console.error('❌ Unexpected signout error:', error)
@@ -213,11 +251,11 @@ class AuthService {
 
   private async _fetchCurrentUser(): Promise<AuthUser | null> {
     try {
-      console.log('📡 Fetching auth user...')
+      console.log('📡 Fetching current user from Supabase Auth...')
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
       
       if (authError) {
-        console.warn('⚠️ Auth session issue:', authError.message)
+        console.warn('⚠️ Supabase Auth session issue:', authError.message)
         
         // Check for stale session errors and clean up
         if (authError.message.includes('Auth session missing!') || 
@@ -239,13 +277,15 @@ class AuthService {
       }
       
       if (!authUser) {
-        console.log('❌ No authenticated user found')
+        console.log('❌ No authenticated user found in Supabase')
         return null
       }
 
-      console.log('✅ Auth user found, ID:', authUser.id)
+      console.log('✅ Supabase Auth user found, ID:', authUser.id)
+      console.log('📧 Email:', authUser.email)
+      console.log('✅ Email confirmed:', authUser.email_confirmed_at ? 'Yes' : 'No')
 
-      // Fetch user profile
+      // Fetch user profile from our users table
       console.log('📊 Fetching user profile from users table...')
       const { data: profile, error: profileError } = await supabase
         .from('users')
@@ -262,7 +302,7 @@ class AuthService {
         const metadata = authUser.user_metadata || {}
         const defaultProfile = {
           id: authUser.id,
-          name: metadata.name || 'User',
+          name: metadata.name || authUser.email?.split('@')[0] || 'User',
           age: metadata.age || 12,
           age_group: metadata.age_group || '11-15' as AgeGroup,
           avatar: metadata.avatar || ''
@@ -430,7 +470,7 @@ class AuthService {
         createdAt: new Date(userProfile.created_at || '')
       }
 
-      console.log('✅ User data successfully loaded for:', finalUser.name)
+      console.log('✅ User data successfully loaded for:', finalUser.name, '(', finalUser.email, ')')
       return finalUser
     } catch (error) {
       console.error('❌ Unexpected error in getCurrentUser:', error)
@@ -619,11 +659,12 @@ class AuthService {
       return { data: { subscription: { unsubscribe: () => {} } } }
     }
 
-    console.log('🔄 Setting up auth state change listener')
+    console.log('🔄 Setting up Supabase auth state change listener')
     this.authStateListenerSetup = true
     
     return supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event, session?.user?.id || 'no user')
+      console.log('🔄 Supabase auth state changed:', event, session?.user?.id || 'no user')
+      console.log('📧 User email:', session?.user?.email || 'no email')
       
       // Clear cache on auth state change
       this.clearCache()
@@ -637,6 +678,26 @@ class AuthService {
         callback(null)
       }
     })
+  }
+
+  // Helper method to check if user is authenticated
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      return !!user
+    } catch {
+      return false
+    }
+  }
+
+  // Helper method to get current session
+  async getSession() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      return session
+    } catch {
+      return null
+    }
   }
 }
 

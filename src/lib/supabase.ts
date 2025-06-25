@@ -59,7 +59,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storageKey: 'safetylearn-auth',
     storage: customStorage,
     autoRefreshToken: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce'
   }
 })
 
@@ -72,7 +73,7 @@ export interface Database {
           id: string
           name: string
           age: number
-          age_group: '5-9' | '10-14' | '15-19'
+          age_group: '5-10' | '11-15' | '16-19'
           avatar: string | null
           created_at: string | null
           updated_at: string | null
@@ -81,7 +82,7 @@ export interface Database {
           id: string
           name: string
           age: number
-          age_group: '5-9' | '10-14' | '15-19'
+          age_group: '5-10' | '11-15' | '16-19'
           avatar?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -90,7 +91,7 @@ export interface Database {
           id?: string
           name?: string
           age?: number
-          age_group?: '5-9' | '10-14' | '15-19'
+          age_group?: '5-10' | '11-15' | '16-19'
           avatar?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -159,5 +160,24 @@ export interface Database {
         }
       }
     }
+  }
+}
+
+// Helper function to check Supabase connection
+export const checkSupabaseConnection = async () => {
+  try {
+    console.log('🔍 Testing Supabase connection...')
+    const { data, error } = await supabase.from('achievements').select('count').limit(1)
+    
+    if (error) {
+      console.error('❌ Supabase connection test failed:', error.message)
+      return false
+    }
+    
+    console.log('✅ Supabase connection successful')
+    return true
+  } catch (error) {
+    console.error('❌ Supabase connection test error:', error)
+    return false
   }
 }

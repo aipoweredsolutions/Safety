@@ -24,7 +24,7 @@ function App() {
     
     const initializeAuth = async () => {
       try {
-        console.log('🚀 Initializing authentication...');
+        console.log('🚀 Initializing SafetyLearn authentication...');
         
         // Check for existing session
         const currentUser = await authService.getCurrentUser();
@@ -33,7 +33,12 @@ function App() {
           setUser(currentUser);
           setAuthInitialized(true);
           setLoading(false);
-          console.log('✅ Authentication initialized, user:', currentUser ? `${currentUser.name} (${currentUser.email})` : 'not found');
+          
+          if (currentUser) {
+            console.log('✅ Authentication initialized, user:', `${currentUser.name} (${currentUser.email})`);
+          } else {
+            console.log('✅ Authentication initialized, no user session found');
+          }
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
@@ -49,7 +54,11 @@ function App() {
     // Set up auth state listener only once
     const { data: { subscription } } = authService.onAuthStateChange((newUser) => {
       if (mounted) {
-        console.log('🔄 Auth state updated:', newUser ? `user ${newUser.name} (${newUser.email})` : 'signed out');
+        if (newUser) {
+          console.log('🔄 Auth state updated: user signed in ->', `${newUser.name} (${newUser.email})`);
+        } else {
+          console.log('🔄 Auth state updated: user signed out');
+        }
         setUser(newUser);
       }
     });
@@ -104,7 +113,8 @@ function App() {
           <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
           </div>
-          <h2 className="text-xl font-semibold text-gray-800">Loading SafetyLearn...</h2>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading SafetyLearn...</h2>
+          <p className="text-gray-600">Connecting to your account...</p>
         </div>
       </div>
     );

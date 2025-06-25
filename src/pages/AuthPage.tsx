@@ -1,18 +1,46 @@
-import React, { useState } from 'react'
-import { Shield, ArrowLeft } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Shield, ArrowLeft, CheckCircle } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AuthForm, { AuthFormData } from '../components/AuthForm'
 import { authService } from '../services/authService'
+import { checkSupabaseConnection } from '../lib/supabase'
 
 const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  // Check for email confirmation or other URL parameters
+  useEffect(() => {
+    const checkUrlParams = async () => {
+      // Check if this is an email confirmation callback
+      if (searchParams.get('type') === 'signup' && searchParams.get('token_hash')) {
+        setSuccess('Email confirmed successfully! You can now sign in.')
+        setMode('signin')
+      }
+
+      // Check if there's an error in the URL
+      const errorParam = searchParams.get('error')
+      if (errorParam) {
+        setError(decodeURIComponent(errorParam))
+      }
+
+      // Test Supabase connection
+      const connected = await checkSupabaseConnection()
+      setSupabaseConnected(connected)
+    }
+
+    checkUrlParams()
+  }, [searchParams])
 
   const handleSubmit = async (data: AuthFormData) => {
     setLoading(true)
     setError(null)
+    setSuccess(null)
 
     try {
       let result
@@ -35,9 +63,16 @@ const AuthPage: React.FC = () => {
 
       if (result.error) {
         console.error('❌ Auth error:', result.error)
-        setError(result.error)
+        
+        // Check if this is an email confirmation message
+        if (result.error.includes('check your email')) {
+          setSuccess(result.error)
+          setMode('signin') // Switch to sign in mode after successful signup
+        } else {
+          setError(result.error)
+        }
       } else if (result.user) {
-        console.log('✅ Auth successful for user:', result.user.name)
+        console.log('✅ Auth successful for user:', result.user.name, '(', result.user.email, ')')
         console.log('🔄 Redirecting to dashboard...')
         
         // Small delay to ensure state is updated
@@ -54,6 +89,12 @@ const AuthPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleModeSwitch = () => {
+    setMode(mode === 'signin' ? 'signup' : 'signin')
+    setError(null)
+    setSuccess(null)
   }
 
   return (
@@ -82,6 +123,23 @@ const AuthPage: React.FC = () => {
       {/* Main Content */}
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] p-4">
         <div className="max-w-md w-full">
+          {/* Supabase Connection Status */}
+          {supabaseConnected === false && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center mt-0.5">
+                  <span className="text-white text-xs">!</span>
+                </div>
+                <div>
+                  <h3 className="font-medium text-red-800 mb-1">Connection Issue</h3>
+                  <p className="text-red-700 text-sm">
+                    Unable to connect to the authentication service. Please check your internet connection and try again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Auth Card */}
           <div className="bg-white rounded-2xl shadow-xl p-8">
             <div className="text-center mb-8">
@@ -99,6 +157,19 @@ const AuthPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Success Message */}
+            {success && (
+              <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-medium text-green-800">Success!</h3>
+                    <p className="text-green-700 text-sm mt-1">{success}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <AuthForm
               mode={mode}
               onSubmit={handleSubmit}
@@ -112,10 +183,7 @@ const AuthPage: React.FC = () => {
                 {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
                 {' '}
                 <button
-                  onClick={() => {
-                    setMode(mode === 'signin' ? 'signup' : 'signin')
-                    setError(null)
-                  }}
+                  onClick={handleModeSwitch}
                   className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
                   disabled={loading}
                 >
@@ -132,11 +200,22 @@ const AuthPage: React.FC = () => {
               <div>
                 <h3 className="font-medium text-blue-800 mb-1">Your Safety & Privacy</h3>
                 <p className="text-sm text-blue-700">
-                  We take your privacy seriously. Your personal information is secure and will never be shared with third parties.
+                  We take your privacy seriously. Your personal information is secure and will never be shared with third parties. 
+                  All authentication is handled securely through Supabase.
                 </p>
               </div>
             </div>
           </div>
+
+          {/* Connection Status */}
+          {supabaseConnected === true && (
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center space-x-2 text-xs text-green-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>Connected to SafetyLearn servers</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
